@@ -1,0 +1,5 @@
+services:
+  langfuse-web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile

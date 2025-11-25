@@ -31,6 +31,7 @@ describe("Memberships APIs", () => {
   let testOrgId: string;
   let testProjectId: string;
   let testUserId: string;
+  let testUserEmail: string;
   let testApiKey: string;
   let testApiSecretKey: string;
 
@@ -61,6 +62,7 @@ describe("Memberships APIs", () => {
       },
     });
     testUserId = user.id;
+    testUserEmail = uniqueUserEmail;
 
     // Create an organization API key
     const apiKey = await createAndAddApiKeysToDb({
@@ -394,6 +396,89 @@ describe("Memberships APIs", () => {
             (membership) => membership.userId === testUserId,
           ),
         ).toBe(true);
+      });
+    });
+
+    describe("POST /api/public/organizations/memberships", () => {
+      it("should add an existing user to organization with valid API key", async () => {
+        // Ensure user is not a member
+        await prisma.organizationMembership.deleteMany({
+          where: {
+            userId: testUserId,
+            orgId: testOrgId,
+          },
+        });
+
+        const response = await makeZodVerifiedAPICall(
+          MembershipResponseSchema,
+          "POST",
+          `/api/public/organizations/memberships`,
+          {
+            email: testUserEmail,
+            role: Role.MEMBER,
+          },
+          createBasicAuthHeader(testApiKey, testApiSecretKey),
+          200,
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.body.userId).toBe(testUserId);
+        expect(response.body.role).toBe(Role.MEMBER);
+
+        // Verify the membership was created in the database
+        const membership = await prisma.organizationMembership.findUnique({
+          where: {
+            orgId_userId: {
+              userId: testUserId,
+              orgId: testOrgId,
+            },
+          },
+        });
+        expect(membership?.role).toBe(Role.MEMBER);
+      });
+
+      it("should invite a new user to organization with valid API key", async () => {
+        const newUserEmail = `new-user-${randomUUID().substring(0, 8)}@example.com`;
+
+        const response = await makeAPICall(
+          "POST",
+          `/api/public/organizations/memberships`,
+          {
+            email: newUserEmail,
+            role: Role.ADMIN,
+          },
+          createBasicAuthHeader(testApiKey, testApiSecretKey),
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.body.email).toBe(newUserEmail);
+        expect(response.body.role).toBe(Role.ADMIN);
+        expect(response.body.status).toBe("PENDING");
+        expect(response.body.invitationId).toBeDefined();
+
+        // Verify the invitation was created in the database
+        const invitation = await prisma.membershipInvitation.findFirst({
+          where: {
+            email: newUserEmail,
+            orgId: testOrgId,
+          },
+        });
+        expect(invitation).not.toBeNull();
+        expect(invitation?.orgRole).toBe(Role.ADMIN);
+      });
+
+      it("should return 400 for invalid email", async () => {
+        const response = await makeAPICall(
+          "POST",
+          `/api/public/organizations/memberships`,
+          {
+            email: "invalid-email",
+            role: Role.MEMBER,
+          },
+          createBasicAuthHeader(testApiKey, testApiSecretKey),
+        );
+
+        expect(response.status).toBe(400);
       });
     });
 

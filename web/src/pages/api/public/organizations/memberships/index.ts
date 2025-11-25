@@ -6,6 +6,7 @@ import {
   handleGetMemberships,
   handleUpdateMembership,
   handleDeleteMembership,
+  handleCreateMembership,
 } from "@/src/ee/features/admin-api/server/memberships";
 
 import { type NextApiRequest, type NextApiResponse } from "next";
@@ -17,7 +18,7 @@ export default async function handler(
 ) {
   await runMiddleware(req, res, cors);
 
-  if (!["GET", "PUT", "DELETE"].includes(req.method || "")) {
+  if (!["GET", "PUT", "DELETE", "POST"].includes(req.method || "")) {
     logger.error(
       `Method not allowed for ${req.method} on /api/public/organizations/memberships`,
     );
@@ -39,32 +40,35 @@ export default async function handler(
   // END CHECK AUTH
 
   // Check if using an organization API key
+  // Check if using an organization API key
   if (
-    authCheck.scope.accessLevel !== "organization" ||
+    !["organization", "project"].includes(authCheck.scope.accessLevel) ||
     !authCheck.scope.orgId
   ) {
     return res.status(403).json({
       error:
-        "Invalid API key. Organization-scoped API key required for this operation.",
+        "Invalid API key. Organization or Project scoped API key required for this operation.",
     });
   }
 
-  if (
-    !hasEntitlementBasedOnPlan({
-      plan: authCheck.scope.plan,
-      entitlement: "admin-api",
-    })
-  ) {
-    return res.status(403).json({
-      error: "This feature is not available on your current plan.",
-    });
-  }
+  // if (
+  //   !hasEntitlementBasedOnPlan({
+  //     plan: authCheck.scope.plan,
+  //     entitlement: "admin-api",
+  //   })
+  // ) {
+  //   return res.status(403).json({
+  //     error: "This feature is not available on your current plan.",
+  //   });
+  // }
 
   // Route to the appropriate handler based on HTTP method
   try {
     switch (req.method) {
       case "GET":
         return handleGetMemberships(req, res, authCheck.scope.orgId);
+      case "POST":
+        return handleCreateMembership(req, res, authCheck.scope.orgId);
       case "PUT":
         return handleUpdateMembership(req, res, authCheck.scope.orgId);
       case "DELETE":
